@@ -94,7 +94,7 @@ p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000){
   #
   # nsim (int):  number of samples drawn for simulation
   # ccov (mat):  [na x na] matrix
-  # alternatives (mat): [nc x na] matrix
+  # attributes (mat): [nc x na] matrix
   # j (int/vec): calculate choice probabilities for these objects. 
   #
   
@@ -103,6 +103,37 @@ p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000){
   if (is.vector(sampled_probs)) sampled_probs <- t(as.matrix(sampled_probs))
   return(rowMeans(sampled_probs))
 }
+
+scat <- matrix(c(seq(-.5, .5, by = 0.2), seq(-.5, .5, by = 0.2)), ncol = 2)
+fdist <- matrix(purrr::rdunif(nrow(scat)^2, 10, 0), nrow = nrow(scat))
+fdist <- fdist/sum(fdist)
+
+# only works with two attributes, currently.
+p_mmlogit_cat  <- function(j, scat, fdist, attributes){
+
+  # 
+  # Description: Calculate the probability of objects j being chosen if coefficients
+  #              on attributes (i.e. choice paramters) are drawn from scat (support) 
+  #              categories in the population, with joint distribution fdist.
+  #              Let na be the number of attributes of each alternative
+  #              and nc be the number of alternatives to be chosen from.
+  #
+  # nsim (int):  number of samples drawn for simulation
+  # fdist (mat): [ncat x ncat] matrix, rows correspond to support of first attr.
+  # j (int/vec): calculate choice probabilities for these objects. 
+  #
+  
+  # expand possible coefficient combinations
+  ζ <- tidyr::expand_grid(scat[,1], scat[,2]) %>% as.matrix 
+  grid_probs <- calc_choice_prob_given_parameters_mmlogit(j, ζ, attributes)
+  if (is.vector(grid_probs)) {
+    grid_probs <- matrix(grid_probs, nrow = 1)
+  }
+  pweights <- utils::stack(data.frame(t(fdist)))$values
+  sampled_probs <- purrr::modify(data.frame(t(grid_probs)), function(x) x * pweights)
+  return(colSums(sampled_probs))
+}
+
 calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes){
   # function is vectorized using df operations
   # j can be a single alternative or a vector of alternatives.
@@ -122,6 +153,8 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes){
     stop("Cannot work with input coefficients.")
   }
 }
+
+
 
 
 ### ------------------------------ Sandbox --------------------------------- ###
