@@ -17,10 +17,10 @@ require(rlang)
 
 # setting parameters to generate dataset 
 params <- list(
- alternatives_n = 20,
- choiceset_n = 5,
+ alternatives_n = 10,
+ choiceset_n = 3,
  choices_per_i = 3,
- players_n = 100,
+ players_n = 500,
  players_coef_var = matrix(c(1, 1/2, 1/2, 1), ncol = 2),
  players_coef_mean = c(0,0)
 )
@@ -140,10 +140,9 @@ make_U                  <- function(data, coefficients, attributes) {
   }
   data$U <- 0
   for (i in 1:length(coefficients)) {
-    data$U <- data$U + data[coefficients[i]] * data[attributes[i]]     
+    data["U"] <- data["U"] + data[coefficients[i]] * data[attributes[i]] 
   }
-  data$U <- data$U + data$noise
-  names(data$U) <- "U"
+  data["U"] <- data["U"] + data$noise
   return(data)
 }
 gen_choices             <- function(data) {
@@ -155,9 +154,7 @@ gen_choices             <- function(data) {
     summarise(maxU = max(U), a_id = a_id, chosen = U == max(U)) %>%
     right_join(data, by = c("p_id", "c_id", "a_id")) %>%
     as.data.frame() %>%
-    select(p_id, c_id, a_id, chosen, U, maxU, starts_with("attr"), starts_with("coef")) %>%
-    head()
-  
+    select(p_id, c_id, a_id, chosen, U, maxU, starts_with("attr"), starts_with("coef")) 
   return(data)
 }
 
@@ -171,36 +168,15 @@ main <- function(outname = "df") {
   data <- join_choices_and_coefs(data, coefs)
   data <- gen_choice_utility(data = data, noise = "EV1", location = 0, scale = 1) 
   data <- gen_choices(data)
-  
-  #df <<- data
+
   assign(paste0(outname), data, envir = global_env(),
        inherits = FALSE, immediate = TRUE)
     
 }
 
 main()
-head(df, n = 20)
+write.csv(df, file = "./data/choices.csv")
 
-# cholesky decomposition of covariance matrix
-# Γ <- base::chol(params$players_coef_var) %>% t
-# 
-# allow for truncation parameters
-# use the triangular structure of Γ
-# 
-# 
-# len_rand <- nrow(params$players_coef_var)
-# function()
-# if (trunc_lo == Inf & trunc_hi == Inf) {
-#   η = Γ %*% rnorm(len_rand)
-# } 
-# else {
-#   z = rnorm(len_rand)
-#   
-# }
-# 
-# Γ = 1
 
-# if η = mu + Γz, and z ~ N(0,1), then:
-# Pr(a1 < Γ11z1 < b1, a2 < Γ21z1 + Γ22z2 < b2, a3 < Γ31z1 + Γ32z2 + Γ33z3 < b3, ...)
 
 
