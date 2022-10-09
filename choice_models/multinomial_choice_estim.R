@@ -29,8 +29,9 @@ params <- list(
 )
 
 ### ------------------------------------------------------------------------ ###
+#                       Simulate choice probabilities
+### ------------------------------------------------------------------------ ###
 # Multinomial Probit: homogeneous coefficients ####
-# Simulate choice probabilities
 p_mprob <- function(j, coefs, attributes, cov0, nsim = 10000) {
   #
   # Description: Estimate the probability of j being chosen in a multinomial
@@ -81,9 +82,9 @@ p_mprob <- function(j, coefs, attributes, cov0, nsim = 10000) {
 
 }
 
-### ------------------------------------------------------------------------ ###
 # Mixed Multinomial Logit Model: Heterogeneous coefficients ####
-# Simulate choice Probabilities
+
+#   Probit coefficients
 p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000){
   # 
   # Description: Simulate the probability of objects j being chosen if coefficients
@@ -104,12 +105,9 @@ p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000){
   return(rowMeans(sampled_probs))
 }
 
-scat <- matrix(c(seq(-.5, .5, by = 0.2), seq(-.5, .5, by = 0.2)), ncol = 2)
-fdist <- matrix(purrr::rdunif(nrow(scat)^2, 10, 0), nrow = nrow(scat))
-fdist <- fdist/sum(fdist)
-
-# only works with two attributes, currently.
-p_mmlogit_cat  <- function(j, scat, fdist, attributes){
+#   Latent class model
+#       categorical coefficients: only for two attributes [deprecated ;)]
+p_mmlogit_cat2  <- function(j, scat, fdist, attributes){
 
   # 
   # Description: Calculate the probability of objects j being chosen if coefficients
@@ -118,9 +116,10 @@ p_mmlogit_cat  <- function(j, scat, fdist, attributes){
   #              Let na be the number of attributes of each alternative
   #              and nc be the number of alternatives to be chosen from.
   #
-  # nsim (int):  number of samples drawn for simulation
-  # fdist (mat): [ncat x ncat] matrix, rows correspond to support of first attr.
-  # j (int/vec): calculate choice probabilities for these objects. 
+  # nsim (int):       number of samples drawn for simulation
+  # fdist (mat):      [ncat x ncat] matrix, rows correspond to support of first attr.
+  # j (int/vec):      calculate choice probabilities for these objects. 
+  # attributes (mat): (observable) attributes of chooseable objects.
   #
   
   # expand possible coefficient combinations
@@ -134,6 +133,31 @@ p_mmlogit_cat  <- function(j, scat, fdist, attributes){
   return(colSums(sampled_probs))
 }
 
+#       categorical coefficients: for any number of attributes
+p_mmlogit_cat  <- function(j, scat_grid, attributes){
+  
+  # 
+  # Description: Calculate the probability of objects j being chosen if coefficients
+  #              on attributes (i.e. choice paramters) are drawn from scat (support) 
+  #              categories in the population, with some joint distribution.
+  #              Let na be the number of attributes of each alternative
+  #              and nc be the number of alternatives to be chosen from.
+  #
+  # scat_grid (mat):  [ncat^na x (na + 1)] matrix, grid ranging over all combinations 
+  #                   in the support of the joint distribution of coefficients. 
+  #                   Rightmost column is the density evaluated at that point.
+  # j (int/vec):      calculate choice probabilities for these objects. 
+  # attributes (mat): (observable) attributes of chooseable objects.
+  #
+  
+  #  possible coefficient combinations
+  ζ <- scat2_grid[,-ncol(scat2_grid)]
+  grid_probs <- calc_choice_prob_given_parameters_mmlogit(j, ζ, attributes) 
+  choice_probs <- grid_probs %*% scat_grid[, ncol(scat_grid)]
+  return(choice_probs)
+}
+
+# A helper function
 calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes){
   # function is vectorized using df operations
   # j can be a single alternative or a vector of alternatives.
@@ -141,13 +165,14 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes){
   # each row corresponding to one sampled coefficient vector is provided.
   if (is.vector(coefs)) {
     vΩ <- exp(attributes %*% coefs)
-    SvΩ <- exp(vΩ) %>% sum
-    return(exp(vΩ)[j] / SvΩ )
+    SvΩ <- vΩ %>% sum
+    return(vΩ[j] / SvΩ )
   }
   else if (is.matrix(coefs)) {
-    vΩ <- exp(attributes %*% t(coefs))
-    SvΩ <- exp(vΩ) %>% colSums
-    return(exp(vΩ[j,]) / SvΩ)
+    vΩ <- t(exp(attributes %*% t(coefs)))
+    SvΩ <- vΩ %>% rowSums %>% as.matrix
+    vΩ <- cbind(vΩ, SvΩ)
+    return(t(vΩ[,j] / SvΩ[, ncol(SvΩ)]))
   }
   else {
     stop("Cannot work with input coefficients.")
@@ -155,7 +180,14 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes){
 }
 
 
+### ------------------------------------------------------------------------ ###
+#                           Likelihood Functions
+### ------------------------------------------------------------------------ ###
+# note on identification:
 
+LikelihoodFunction <- function(choices, p_id, c_id, a_id, attr, ...) {
+  data <- cbind(choices, p_id, c_id, a_id, attr)
+}
 
 ### ------------------------------ Sandbox --------------------------------- ###
 
@@ -171,28 +203,63 @@ cov0        <- matrix(c(  1,  .5,  .5,
 cmean       <- c(0.2,0)
 ccov        <- matrix(c(1, .5, .5, 1), ncol = 2)
 
+# parameters/input for categorical model.
+#   two dimensional attributes
+scat <- matrix(c(seq(-.5, .5, by = 0.2), seq(-.5, .5, by = 0.2)), ncol = 2)
+fdist <- matrix(purrr::rdunif(nrow(scat)^2, 10, 0), nrow = nrow(scat))
+fdist <- fdist/sum(fdist)
+#   lets also do this with four dimensions
+attributes2 <- cbind(attributes, attributes + matrix(rnorm(n=6, sd = 0.2), ncol = 2))
+scat2 <- cbind(scat, scat)
+#   expand the support on a grid. Variables are called V1, ..., Vk, k = ncol(scat2)
+scat2_grid <- do.call(tidyr::expand_grid, scat2 %>% as.data.frame %>% as.list)
+scat2_grid$f <- runif(nrow(scat2_grid))
+scat2_grid$f <- scat2_grid$f/sum(scat2_grid$f)
+scat2_grid <- as.matrix(scat2_grid)
+
 # 1. Try out the probability simulator for the multinomial mixed logit model.
 cat("\n---- 1 ----", sep = "\n")
-tic("simulate all choice probabilities in the mixed multinomial logit model.")
-p_mmlogit_norm(1:nrow(attributes), cmean, ccov, attributes, nsim = 10000) %>% cat(sep = "\n")
+cat("P[ choice = j ] = \n")
+tic("simulate all choice probabilities in the mixed multinomial logit model.\nTimed")
+p_mmlogit_norm(1:nrow(attributes), cmean, ccov, attributes, nsim = 1000000) %>% cat(" ", sep = "\n")
 toc()
 
 # 2. Try out the probability simulator for the multinomial probit model.
 j <- 2 # index of chosen alternative
 cat("\n---- 2a ----", sep = "\n")
-tic("simulate a choice probability in the multinomial probit model.")
-p_mprob(3, coefs, attributes, cov0, nsim = 10000) %>% cat(sep = "\n")
+cat("P[ choice = j ] = \n")
+tic("simulate a choice probability in the multinomial probit model.\nTimed")
+p_mprob(3, coefs, attributes, cov0, nsim = 10000) %>% cat(" ", sep = "\n")
 toc()
 
-# set parameters as to simulate a fully arbitrary choice 
-# and run the function for a choice of j ∈ {1, ..., 5}
-# choice probability should be around .2
+#   set parameters as to simulate a fully arbitrary choice 
+#   and run the function for a choice of j ∈ {1, ..., 5}
+#   choice probability should be around .2
 cat("\n---- 2b ----", sep = "\n")
-tic("simulate a choice probability in the multinomial probit model, \nequal likelihood case.")
+tic("simulate a choice probability in the multinomial probit model, \nequal likelihood case.\nTimed")
+cat("P[ choice = j ] = \n")
 p_mprob(1, coefs = c(1), 
         attributes = matrix(rep(0, 5), ncol = 1), 
         cov0 = diag(5), 
-        nsim = 10000) %>% cat(sep = "\n")
+        nsim = 10000) %>% cat(" ", sep = "\n")
 toc()
+
+# 3. Try out calculating choice probabilities for the 
+#    categorical mixed logit mulitnomial choice model
+
+#   example of p_mmlogit_cat
+cat("\n---- 3a ----", sep = "\n")
+cat("P[ choice = j ] = \n")
+tic("calculate a vector of choice probabiliites in the mutinomial \ncategorical mixed logit model, given a distribution of population coefficients. \nFour attributes case.\nTimed")
+p_mmlogit_cat(1:nrow(attributes2), scat2_grid, attributes2) %>% cat(" ", sep = "\n")
+toc()
+
+#   example of p_mmlogit_cat2
+cat("\n---- 3b ----", sep = "\n")
+cat("P[ choice = j ] = \n")
+tic("calculate a vector of choice probabiliites in the mutinomial \ncategorical mixed logit model, given a distribution of population coefficients. \nTwo attributes case.\nTimed")
+p_mmlogit_cat2(1:nrow(attributes), scat = scat, fdist = fdist, attributes = attributes) %>% cat(" ", sep = "\n")
+toc()
+
 
 ## End(Not run)
