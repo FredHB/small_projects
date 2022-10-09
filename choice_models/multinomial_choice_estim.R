@@ -158,35 +158,106 @@ p_mmlogit_cat  <- function(j, scat_grid, attributes){
 }
 
 # A helper function
-calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes){
+
+#### Pick up from here: 
+# continue coding in the wrappers of calc_choice_prob_given_parameters_mmlogit
+# to make the vectorized function work for p_mmlogit_norm etc... Need a fast way
+# to compute the loglikelihood function.
+####
+
+
+calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by = NULL){
   # function is vectorized using df operations
-  # j can be a single alternative or a vector of alternatives.
-  # Two cases: coefficient vector is provided, or a matrix of coefficients with
-  # each row corresponding to one sampled coefficient vector is provided.
-  if (is.vector(coefs)) {
-    vΩ <- exp(attributes %*% coefs)
-    SvΩ <- vΩ %>% sum
-    return(vΩ[j] / SvΩ )
-  }
-  else if (is.matrix(coefs)) {
-    vΩ <- t(exp(attributes %*% t(coefs)))
-    SvΩ <- vΩ %>% rowSums %>% as.matrix
-    vΩ <- cbind(vΩ, SvΩ)
-    return(t(vΩ[,j] / SvΩ[, ncol(SvΩ)]))
+  # function can be used to calculate choice probabilities in a single choice
+  # set, in which case it requires input of vector j, the alternatives for which
+  # to calculate such. It can also calculate probabilities across a range of
+  # choice situations (hence one needs to supply a longer matrix of attributes), 
+  # delineated by the "by" input variable.
+  
+  if (is.null(by)) {
+    # j can be a single alternative or a vector of alternatives.
+    # Two cases: coefficient vector is provided, or a matrix of coefficients with
+    # each row corresponding to one sampled coefficient vector is provided.
+    if (is.vector(coefs)) {
+      vΩ <- exp(attributes %*% coefs)
+      SvΩ <- vΩ %>% sum
+      return(vΩ[j] / SvΩ )
+    }
+    else if (is.matrix(coefs)) {
+      vΩ <- t(exp(attributes %*% t(coefs)))
+      SvΩ <- vΩ %>% rowSums %>% as.matrix
+      vΩ <- cbind(vΩ, SvΩ)
+      return(t(vΩ[,j] / SvΩ[, ncol(SvΩ)]))
+    }
+    else {
+      stop("Cannot work with input coefficients.")
+    }
   }
   else {
-    stop("Cannot work with input coefficients.")
+    # if "by" is not null, j becomes redundant. Just output a matrix that calculates the 
+    # choice probabilities in each choice set defined by "by" (rows), and across all 
+    # draws of coefficients supplied (columns). This vectorized version of this function
+    # is useful for faster computation of the likelihood of the entire sample, given a
+    # (hyper-)parameter vector.
+      
+    # attributes <- as.matrix(data[, 5:6])
+    # coefs <- ζ
+    # by <- seq(1, 1500 + 2/3, 1/3) %>% floor()
+    
+      vΩ <- exp(attributes %*% t(coefs))
+      SvΩ <- vΩ %>% rowsum(group = by) %>% as.matrix 
+      SvΩ <- SvΩ[rep(1:nrow(SvΩ), each=3),]
+      
+      probs <- vΩ / SvΩ
+      dimnames(probs)[[1]] <- paste0("cid_", by)
+      dimnames(probs)[[2]] <- paste0("coefdraw_", 1:ncol(probs))
+      
+      return(probs)
   }
+
 }
 
+calc_choice_prob_given_parameters_mmlogit(0, coefs, attributes, by)
 
+
+as.matrix(data[, 5:6])
 ### ------------------------------------------------------------------------ ###
 #                           Likelihood Functions
 ### ------------------------------------------------------------------------ ###
 # note on identification:
+parameters <- list(ccov = ccov, cmean = cmean)
+attributes
 
 LikelihoodFunction <- function(choices, p_id, c_id, a_id, attr, ...) {
-  data <- cbind(choices, p_id, c_id, a_id, attr)
+  #data <- cbind(as.vector(choices), as.vector(p_id), as.vector(c_id), as.vector(a_id), as.matrix(attr))
+  parameters <- list(...)
+  data <- data.frame(chosen = as.vector(choices[,"chosen"]), 
+                p_id = as.vector(choices[,"p_id"]), 
+                c_id = as.vector(choices[,"c_id"]), 
+                a_id = as.vector(choices[,"a_id"]), 
+                as.matrix(choices[,c("attr1", "attr2")]) )
+  data %>% head
+  
+  dyade_pid_cid <- data %>% select(c("p_id", "c_id")) %>% unique()
+  
+  choice_pid_cid <- function(x, data, parameters, dyade_pid_cid) {
+    attr <- data[data$c_id == dyade_pid_cid$c_id[x] & data$p_id == dyade_pid_cid$p_id[x],] %>% select(starts_with("attr")) %>% as.matrix
+    obj  <- data[data$c_id == dyade_pid_cid$c_id[x] & data$p_id == dyade_pid_cid$p_id[x],]["a_id"] %>% as.vector
+    
+    p_mmlogit_norm(j = 1:nrow(attr),
+                   cmean = as.vector(parameters$cmean), 
+                   ccov = as.matrix(parameters$ccov), 
+                   attributes = attr, nsim = 1000) %>% 
+    return
+  }
+
+  purrr::map(as.list(1:nrow(dyade_pid_cid)), 
+             choice_pid_cid, 
+             data=data, 
+             parameters=parameters, 
+             dyade_pid_cid = dyade_pid_cid) %>% 
+    reduce(rbind)
+  
 }
 
 ### ------------------------------ Sandbox --------------------------------- ###
