@@ -163,14 +163,6 @@ p_mmlogit_cat  <- function(j, scat_grid, attributes){
 }
 
 # A helper function
-
-#### Pick up from here: 
-# continue coding in the wrappers of calc_choice_prob_given_parameters_mmlogit
-# to make the vectorized function work for p_mmlogit_norm etc... Need a fast way
-# to compute the loglikelihood function.
-####
-
-
 calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by = NULL){
   # function is vectorized using df operations
   # function can be used to calculate choice probabilities in a single choice
@@ -221,28 +213,12 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by =
 
 }
 
-calc_choice_prob_given_parameters_mmlogit(0, coefs, attributes, by)
-p_mmlogit_norm(0, cmean, ccov, attributes, nsim = 1000, pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id)) %>% head
 
 
 ### ------------------------------------------------------------------------ ###
 #                           Likelihood Functions
 ### ------------------------------------------------------------------------ ###
 # note on identification:
-parameters <- list(ccov = ccov, cmean = cmean)
-attributes
-
-
-LogLikelihoodFunction(
-  choices = choices$chosen,
-  p_id = choices$p_id,
-  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
-  attr = choices[,c(7,8)],
-  model = "p_mmlogit_norm", 
-  cmean = cmean, 
-  ccov = ccov,
-  nsim = 100)
-  
 
 LogLikelihoodFunction <- function(choices, p_id, pc_id, attr, model,...) {
   data <- data.frame(chosen = choices, 
@@ -341,6 +317,27 @@ cat("P[ choice = j ] = \n")
 tic("calculate a vector of choice probabiliites in the mutinomial \ncategorical mixed logit model, given a distribution of population coefficients. \nTwo attributes case.\nTimed")
 p_mmlogit_cat2(1:nrow(attributes), scat = scat, fdist = fdist, attributes = attributes) %>% cat(" ", sep = "\n")
 toc()
+
+# 4. Calculate the simulated log likelihood for a given set of parameters in the
+#    multinomial mixed logit model
+cat("\n---- 4 ----", sep = "\n")
+cat("L[ choice_1 = j_1, ...,   choice_1 = j_1 ; cmean, ccov] = \n")
+tic("Calculate simulated log-likelihood for multinomial mixed logit model.")
+LogLikelihoodFunction(
+  choices = choices$chosen,
+  p_id = choices$p_id,
+  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
+  attr = choices[,c(7,8)],
+  model = "p_mmlogit_norm", 
+  cmean = cmean, 
+  ccov = ccov,
+  nsim = 100) %>% cat(" ", sep = "\n")
+toc()
+
+# To do:
+# Coefficients should be individual-stable
+# identification: make sure to normalize appropriately 
+# (each i should e.g. have unit variance errors for choice 1)
 
 
 ## End(Not run)
