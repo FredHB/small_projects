@@ -85,7 +85,7 @@ p_mprob <- function(j, coefs, attributes, cov0, nsim = 10000) {
 # Mixed Multinomial Logit Model: Heterogeneous coefficients ####
 
 #   Probit coefficients
-p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000){
+p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000, pc_id = NULL){
   # 
   # Description: Simulate the probability of objects j being chosen if coefficients
   #              on attributes (i.e. choice paramters) are normally distributed 
@@ -100,8 +100,13 @@ p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000){
   #
   
   ζ <- rmvn(nsim, cmean, ccov) # sampled coefficients
-  sampled_probs <- calc_choice_prob_given_parameters_mmlogit(j, ζ, attributes) 
-  if (is.vector(sampled_probs)) sampled_probs <- t(as.matrix(sampled_probs))
+  if (is.null(pc_id)) {
+    sampled_probs <- calc_choice_prob_given_parameters_mmlogit(j, ζ, attributes) 
+    if (is.vector(sampled_probs)) sampled_probs <- t(as.matrix(sampled_probs))
+  }
+  else {
+    sampled_probs <- calc_choice_prob_given_parameters_mmlogit(0, ζ, attributes, by =pc_id) 
+  }
   return(rowMeans(sampled_probs))
 }
 
@@ -194,20 +199,19 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by =
     }
   }
   else {
-    # if "by" is not null, j becomes redundant. Just output a matrix that calculates the 
-    # choice probabilities in each choice set defined by "by" (rows), and across all 
-    # draws of coefficients supplied (columns). This vectorized version of this function
-    # is useful for faster computation of the likelihood of the entire sample, given a
-    # (hyper-)parameter vector.
-      
-    # attributes <- as.matrix(data[, 5:6])
-    # coefs <- ζ
-    # by <- seq(1, 1500 + 2/3, 1/3) %>% floor()
+      # if "by" is not null, j becomes redundant. Just output a matrix that calculates the 
+      # choice probabilities in each choice set defined by "by" (rows), and across all 
+      # draws of coefficients supplied (columns). This vectorized version of this function
+      # is useful for faster computation of the likelihood of the entire sample, given a
+      # (hyper-)parameter vector.
+        
+      # attributes <- as.matrix(data[, 5:6])
+      # coefs <- ζ
+      # by <- seq(1, 1500 + 2/3, 1/3) %>% floor()
     
       vΩ <- exp(attributes %*% t(coefs))
-      SvΩ <- vΩ %>% rowsum(group = by) %>% as.matrix 
+      SvΩ <- vΩ %>% rowsum(group = by) %>% as.matrix
       SvΩ <- SvΩ[rep(1:nrow(SvΩ), each=3),]
-      
       probs <- vΩ / SvΩ
       dimnames(probs)[[1]] <- paste0("cid_", by)
       dimnames(probs)[[2]] <- paste0("coefdraw_", 1:ncol(probs))
@@ -218,15 +222,54 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by =
 }
 
 calc_choice_prob_given_parameters_mmlogit(0, coefs, attributes, by)
+p_mmlogit_norm(0, cmean, ccov, attributes, nsim = 1000, pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id)) %>% head
 
 
-as.matrix(data[, 5:6])
 ### ------------------------------------------------------------------------ ###
 #                           Likelihood Functions
 ### ------------------------------------------------------------------------ ###
 # note on identification:
 parameters <- list(ccov = ccov, cmean = cmean)
 attributes
+
+
+LogLikelihoodFunction(
+  choices = choices$chosen,
+  p_id = choices$p_id,
+  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
+  attr = choices[,c(7,8)],
+  model = "p_mmlogit_norm", 
+  cmean = cmean, 
+  ccov = ccov,
+  nsim = 100)
+  
+
+LogLikelihoodFunction <- function(choices, p_id, pc_id, attr, model,...) {
+  data <- data.frame(chosen = choices, 
+                     p_id = p_id, 
+                     pc_id = pc_id, 
+                     attr)
+  parameters <- list(...)
+  # data <- data.frame(chosen = as.vector(choices[,"chosen"]), 
+  #                    p_id = as.vector(choices[,"p_id"]), 
+  #                    c_id = as.vector(choices[,"c_id"]), 
+  #                    a_id = as.vector(choices[,"a_id"]), 
+  #                    as.matrix(choices[,c("attr1", "attr2")]) )
+  
+  if (model == "p_mmlogit_norm") {
+    choice_probabilities <- p_mmlogit_norm(0, 
+                                           cmean = parameters$cmean, 
+                                           ccov = parameters$ccov, 
+                                           attributes = as.matrix(attr), 
+                                           nsim = parameters$nsim, 
+                                           pc_id = pc_id 
+                                           )
+  }
+  
+  # return simulated log likelihood
+  (choices * log(choice_probabilities)) %>% sum %>% return
+}
+
 
 LikelihoodFunction <- function(choices, p_id, c_id, a_id, attr, ...) {
   #data <- cbind(as.vector(choices), as.vector(p_id), as.vector(c_id), as.vector(a_id), as.matrix(attr))
