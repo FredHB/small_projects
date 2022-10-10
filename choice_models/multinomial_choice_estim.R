@@ -341,24 +341,26 @@ purrr::map_dbl(1:50, function(x) LogLikelihoodFunction(
   pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
   attr = choices[,c(7,8)],
   model = "p_mmlogit_norm", 
-  cmean = c(0.05,0.02), 
-  ccov = matrix(c(1,.4271759,0.4271759,1), nrow = 2),
+  cmean = c(0,0), 
+  ccov = matrix(c(1,.5,.5,1), nrow = 2),
   nsim = 500) ) %>% sd
 
-purrr::map_dbl(1:50, function(x) LogLikelihoodFunction(
-  choices = choices$chosen,
-  p_id = choices$p_id,
-  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
-  attr = choices[,c(7,8)],
+purrr::map_dbl(-10:10/20, function(x) LogLikelihoodFunction(
+  choices = data$chosen,
+  p_id = data$p_id,
+  pc_id = as.matrix(data$c_id)*10000+as.matrix(data$p_id),
+  attr = data[,c(7,8)],
   model = "p_mmlogit_norm", 
-  cmean = c(0.05,0.02), 
-  ccov = matrix(c(1,.4271759,0.4271759,1), nrow = 2),
-  nsim = 10000) ) %>% sd
+  cmean = c(0,x), 
+  ccov = matrix(c(1,.5,.5,1), nrow = 2),
+  nsim = 10000) ) -> z
+plot(-10:10/20, z)
+z %>% lines(x = -10:10/20)
+
 
 # To do:
-# identification: make sure to normalize appropriately 
-# (each i should e.g. have unit variance errors for choice 1)
-# why does the likelihood vary so much across draws???
+# fix an issue with simulation convergence if we consider data with multiple
+# choice situations per individual.
 
 # 5. maximize the likelihood for a multinomial mixed logit with normal mixing
 #    and two attributes

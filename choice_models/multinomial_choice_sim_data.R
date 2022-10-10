@@ -17,10 +17,10 @@ require(rlang)
 
 # setting parameters to generate dataset 
 params <- list(
- alternatives_n = 10,
+ alternatives_n = 30,
  choiceset_n = 3,
  choices_per_i = 3,
- players_n = 500,
+ players_n = 5000,
  players_coef_var = matrix(c(1, 1/2, 1/2, 1), ncol = 2),
  players_coef_mean = c(0,0)
 )
