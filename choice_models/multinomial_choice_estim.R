@@ -270,39 +270,6 @@ LogLikelihoodFunction <- function(choices, p_id, pc_id, attr, model,...) {
   (choices * log(choice_probabilities)) %>% sum %>% return
 }
 
-
-LikelihoodFunction <- function(choices, p_id, c_id, a_id, attr, ...) {
-  #data <- cbind(as.vector(choices), as.vector(p_id), as.vector(c_id), as.vector(a_id), as.matrix(attr))
-  parameters <- list(...)
-  data <- data.frame(chosen = as.vector(choices[,"chosen"]), 
-                p_id = as.vector(choices[,"p_id"]), 
-                c_id = as.vector(choices[,"c_id"]), 
-                a_id = as.vector(choices[,"a_id"]), 
-                as.matrix(choices[,c("attr1", "attr2")]) )
-  data %>% head
-  
-  dyade_pid_cid <- data %>% select(c("p_id", "c_id")) %>% unique()
-  
-  choice_pid_cid <- function(x, data, parameters, dyade_pid_cid) {
-    attr <- data[data$c_id == dyade_pid_cid$c_id[x] & data$p_id == dyade_pid_cid$p_id[x],] %>% select(starts_with("attr")) %>% as.matrix
-    obj  <- data[data$c_id == dyade_pid_cid$c_id[x] & data$p_id == dyade_pid_cid$p_id[x],]["a_id"] %>% as.vector
-    
-    p_mmlogit_norm(j = 1:nrow(attr),
-                   cmean = as.vector(parameters$cmean), 
-                   ccov = as.matrix(parameters$ccov), 
-                   attributes = attr, nsim = 1000) %>% 
-    return
-  }
-
-  purrr::map(as.list(1:nrow(dyade_pid_cid)), 
-             choice_pid_cid, 
-             data=data, 
-             parameters=parameters, 
-             dyade_pid_cid = dyade_pid_cid) %>% 
-    reduce(rbind)
-  
-}
-
 ### ------------------------------ Sandbox --------------------------------- ###
 
 ## Not run:
