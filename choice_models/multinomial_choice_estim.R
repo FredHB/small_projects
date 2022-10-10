@@ -203,7 +203,7 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by =
     
       vΩ <- exp(attributes %*% t(coefs))
       SvΩ <- vΩ %>% rowsum(group = by) %>% as.matrix
-      SvΩ <- SvΩ[rep(1:nrow(SvΩ), each=3),]
+      SvΩ <- SvΩ[rep(1:nrow(SvΩ), each=nrow(vΩ)/nrow(SvΩ)),]
       probs <- vΩ / SvΩ
       dimnames(probs)[[1]] <- paste0("cid_", by)
       dimnames(probs)[[2]] <- paste0("coefdraw_", 1:ncol(probs))
@@ -319,7 +319,7 @@ p_mmlogit_cat2(1:nrow(attributes), scat = scat, fdist = fdist, attributes = attr
 toc()
 
 # 4. Calculate the simulated log likelihood for a given set of parameters in the
-#    multinomial mixed logit model
+#    multinomial mixed logit model with normal mixing
 cat("\n---- 4 ----", sep = "\n")
 cat("L[ choice_1 = j_1, ...,   choice_1 = j_1 ; cmean, ccov] = \n")
 tic("Calculate simulated log-likelihood for multinomial mixed logit model.")
@@ -331,13 +331,50 @@ LogLikelihoodFunction(
   model = "p_mmlogit_norm", 
   cmean = cmean, 
   ccov = ccov,
-  nsim = 100) %>% cat(" ", sep = "\n")
+  nsim = 500) %>% cat(" ", sep = "\n")
 toc()
 
+
+purrr::map_dbl(1:50, function(x) LogLikelihoodFunction(
+  choices = choices$chosen,
+  p_id = choices$p_id,
+  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
+  attr = choices[,c(7,8)],
+  model = "p_mmlogit_norm", 
+  cmean = c(0.05,0.02), 
+  ccov = matrix(c(1,.4271759,0.4271759,1), nrow = 2),
+  nsim = 500) ) %>% sd
+
+purrr::map_dbl(1:50, function(x) LogLikelihoodFunction(
+  choices = choices$chosen,
+  p_id = choices$p_id,
+  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
+  attr = choices[,c(7,8)],
+  model = "p_mmlogit_norm", 
+  cmean = c(0.05,0.02), 
+  ccov = matrix(c(1,.4271759,0.4271759,1), nrow = 2),
+  nsim = 10000) ) %>% sd
+
 # To do:
-# Coefficients should be individual-stable
 # identification: make sure to normalize appropriately 
 # (each i should e.g. have unit variance errors for choice 1)
+# why does the likelihood vary so much across draws???
 
+# 5. maximize the likelihood for a multinomial mixed logit with normal mixing
+#    and two attributes
+
+s11 <- 1
+s22 <- seq(0.1, 4, 0.1)
+s12 = list()
+for (i in seq_along(s22)) {
+  v <- seq(0, sqrt(s11*s22[i]), 0.1) %>% as.vector
+  v <- c(-v[length(v):2], v)
+  s12 <- list(i = v) %>% append(s12)
+}
+
+
+σ11 = s11
+σ22 = s22
+σ12 = σ21 <= sqrt(σ11*σ22)
 
 ## End(Not run)
