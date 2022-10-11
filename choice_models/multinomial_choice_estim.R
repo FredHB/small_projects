@@ -3,6 +3,18 @@
 # Author:       F Bennhoff
 # Description:  estimate a choice model on given data set
 #
+# Status:       Simulate/calculate varying choice probabilities. Can calculate
+#               the likelihood for the mixed multinomial logit model with normal 
+#               mixing distribution.
+#
+# To be done:   - Add a routine that can maximize the likelihood. Use concentrated
+#                 ML.
+#               - Add likelihood routines for other types of models (e.g. latent
+#                 class model)
+#               - For the normal model, extend MLE and allow its parameters to 
+#                 depend on personal characteristics.
+#               - place examples section in different script, and in general break
+#                 code down into multiple scripts.
 
 # clear all
 rm(list = ls())
@@ -105,7 +117,7 @@ p_mmlogit_norm <- function(j, cmean, ccov, attributes, nsim = 10000, pc_id = NUL
     if (is.vector(sampled_probs)) sampled_probs <- t(as.matrix(sampled_probs))
   }
   else {
-    sampled_probs <- calc_choice_prob_given_parameters_mmlogit(0, ζ, attributes, by =pc_id) 
+    sampled_probs <- calc_choice_prob_given_parameters_mmlogit(0, ζ, attributes, by=pc_id) 
   }
   return(rowMeans(sampled_probs))
 }
@@ -202,7 +214,7 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by =
       # by <- seq(1, 1500 + 2/3, 1/3) %>% floor()
     
       vΩ <- exp(attributes %*% t(coefs))
-      SvΩ <- vΩ %>% rowsum(group = by) %>% as.matrix
+      SvΩ <- vΩ %>% rowsum(group = by, reorder = FALSE) %>% as.matrix
       SvΩ <- SvΩ[rep(1:nrow(SvΩ), each=nrow(vΩ)/nrow(SvΩ)),]
       probs <- vΩ / SvΩ
       dimnames(probs)[[1]] <- paste0("cid_", by)
@@ -214,15 +226,12 @@ calc_choice_prob_given_parameters_mmlogit <- function(j, coefs, attributes, by =
 }
 
 
-
 ### ------------------------------------------------------------------------ ###
 #                           Likelihood Functions
 ### ------------------------------------------------------------------------ ###
-# note on identification:
-
-LogLikelihoodFunction <- function(choices, p_id, pc_id, attr, model,...) {
+# Calculate the log likelihood for any of the models listed above.
+LogLikelihoodFunction <- function(choices, pc_id, attr, model,...) {
   data <- data.frame(chosen = choices, 
-                     p_id = p_id, 
                      pc_id = pc_id, 
                      attr)
   parameters <- list(...)
@@ -242,8 +251,9 @@ LogLikelihoodFunction <- function(choices, p_id, pc_id, attr, model,...) {
                                            )
   }
   
-  # return simulated log likelihood
-  (choices * log(choice_probabilities)) %>% sum %>% return
+  # return (simulated) log likelihood
+  pca_lhood <- (choices * log(choice_probabilities)) 
+  sum(pca_lhood) %>% return
 }
 
 ### ------------------------------ Sandbox --------------------------------- ###
@@ -319,14 +329,14 @@ p_mmlogit_cat2(1:nrow(attributes), scat = scat, fdist = fdist, attributes = attr
 toc()
 
 # 4. Calculate the simulated log likelihood for a given set of parameters in the
-#    multinomial mixed logit model with normal mixing
+#    multinomial mixed logit model with normal mixing. Then do a simple grid search
+#    for µ_2 to maximize the (concentrated) likelihood, and plot the result.
 cat("\n---- 4 ----", sep = "\n")
 cat("L[ choice_1 = j_1, ...,   choice_1 = j_1 ; cmean, ccov] = \n")
 tic("Calculate simulated log-likelihood for multinomial mixed logit model.")
 LogLikelihoodFunction(
   choices = choices$chosen,
-  p_id = choices$p_id,
-  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
+  pc_id = as.matrix(choices$c_id)*100000+as.matrix(choices$p_id),
   attr = choices[,c(7,8)],
   model = "p_mmlogit_norm", 
   cmean = cmean, 
@@ -334,49 +344,42 @@ LogLikelihoodFunction(
   nsim = 500) %>% cat(" ", sep = "\n")
 toc()
 
-
-purrr::map_dbl(1:50, function(x) LogLikelihoodFunction(
-  choices = choices$chosen,
-  p_id = choices$p_id,
-  pc_id = as.matrix(choices$c_id)*10000+as.matrix(choices$p_id),
-  attr = choices[,c(7,8)],
-  model = "p_mmlogit_norm", 
-  cmean = c(0,0), 
-  ccov = matrix(c(1,.5,.5,1), nrow = 2),
-  nsim = 500) ) %>% sd
-
-purrr::map_dbl(-10:10/20, function(x) LogLikelihoodFunction(
+tic("Plot the concentrated log likelihood varying µ_2, and mark the max")
+optim_grid <- -20:20/10
+data <- choices
+purrr::map_dbl(optim_grid, function(x) LogLikelihoodFunction(
   choices = data$chosen,
   p_id = data$p_id,
-  pc_id = as.matrix(data$c_id)*10000+as.matrix(data$p_id),
+  pc_id = as.matrix(data$c_id)*100000+as.matrix(data$p_id),
   attr = data[,c(7,8)],
   model = "p_mmlogit_norm", 
-  cmean = c(0,x), 
+  cmean = c(1,x), 
   ccov = matrix(c(1,.5,.5,1), nrow = 2),
-  nsim = 10000) ) -> z
-plot(-10:10/20, z)
-z %>% lines(x = -10:10/20)
+  nsim = 20000) ) -> z
+plot(optim_grid, z)
+z %>% lines(x = optim_grid)
+points(y = max(z), x = optim_grid[which.max(z)], col = "red", pch = "+", cex = 4)
+abline(v = optim_grid[which.max(z)], col = "red", lty = "dashed")
+abline(h = max(z), col = "red", lty = "dashed")
+toc()
 
 
-# To do:
-# fix an issue with simulation convergence if we consider data with multiple
-# choice situations per individual.
-
+#### stashed for now ####
 # 5. maximize the likelihood for a multinomial mixed logit with normal mixing
 #    and two attributes
 
-s11 <- 1
-s22 <- seq(0.1, 4, 0.1)
-s12 = list()
-for (i in seq_along(s22)) {
-  v <- seq(0, sqrt(s11*s22[i]), 0.1) %>% as.vector
-  v <- c(-v[length(v):2], v)
-  s12 <- list(i = v) %>% append(s12)
-}
-
-
-σ11 = s11
-σ22 = s22
-σ12 = σ21 <= sqrt(σ11*σ22)
+# s11 <- 1
+# s22 <- seq(0.1, 4, 0.1)
+# s12 = list()
+# for (i in seq_along(s22)) {
+#   v <- seq(0, sqrt(s11*s22[i]), 0.1) %>% as.vector
+#   v <- c(-v[length(v):2], v)
+#   s12 <- list(i = v) %>% append(s12)
+# }
+# 
+# 
+# σ11 = s11
+# σ22 = s22
+# σ12 = σ21 <= sqrt(σ11*σ22)
 
 ## End(Not run)

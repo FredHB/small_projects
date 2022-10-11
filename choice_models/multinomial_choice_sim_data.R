@@ -1,11 +1,17 @@
 # 
-# Project: Estimating and simulating a random utility model
-# Author: F Bennhoff
-# Description: Generate a simulated dataset of choices
+# Project:      Estimating and simulating a random utility model
+# Author:       F Bennhoff
+# Description:  Generate a simulated dataset of choices
 #
+# Status:       Can generate choice sets for normal mixing distribtion of prefe-
+#               rence parameters.
+# To be done:   - Extend to allow the normal mean/variance to depend on 
+#                 individual characteristics
+#               - Extend to generate data based on the latent class model.
 
 # clear all
 rm(list = ls())
+set.seed(2209)
 
 # load packages
 require(dplyr)
@@ -17,12 +23,12 @@ require(rlang)
 
 # setting parameters to generate dataset 
 params <- list(
- alternatives_n = 30,
+ alternatives_n = 10,
  choiceset_n = 3,
- choices_per_i = 3,
- players_n = 5000,
+ choices_per_i = 1,
+ players_n = 100,
  players_coef_var = matrix(c(1, 1/2, 1/2, 1), ncol = 2),
- players_coef_mean = c(0,0)
+ players_coef_mean = c(1,-1)
 )
 
 gen_choice_situations   <- function(params) {
